@@ -27,6 +27,10 @@ namespace msgraphapp
         public void ConfigureServices(IServiceCollection services)
         {
 
+            var config = new MyConfig();
+            Configuration.Bind("MyConfig", config);
+            services.AddSingleton(config);
+
             services.AddControllers();
             services.AddSwaggerGen(c =>
             {
@@ -43,8 +47,6 @@ namespace msgraphapp
                 app.UseSwagger();
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "msgraphapp v1"));
             }
-
-            app.UseHttpsRedirection();
 
             app.UseRouting();
 
