@@ -55,6 +55,7 @@ namespace msgraphapp.Controllers
             return $"Subscribed. Id: {newSubscription.Id}, Expiration: {newSubscription.ExpirationDateTime}";
         }
 
+
         public async Task<ActionResult<string>> Post([FromQuery] string? validationToken = null)
         {
             // handle validation
@@ -82,8 +83,15 @@ namespace msgraphapp.Controllers
                 }
             }
 
+            // use deltaquery to query for all updates
+            await CheckForUpdates();
+
             return Ok();
         }
+
+
+
+
 
         private GraphServiceClient GetGraphClient()
         {
@@ -152,6 +160,64 @@ namespace msgraphapp.Controllers
 
             subscription.ExpirationDateTime = newSubscription.ExpirationDateTime;
             Console.WriteLine($"Renewed subscription: {subscription.Id}, New Expiration: {subscription.ExpirationDateTime}");
+        }
+
+
+        private static object? DeltaLink = null;
+        private static IUserDeltaCollectionPage? lastPage = null;
+
+        private async Task CheckForUpdates()
+        {
+            var graphClient = GetGraphClient();
+
+            // get a page of users
+            var users = await GetUsers(graphClient, DeltaLink);
+
+            OutputUsers(users);
+
+            // go through all of the pages so that we can get the delta link on the last page.
+            while (users.NextPageRequest != null)
+            {
+                users = users.NextPageRequest.GetAsync().Result;
+                OutputUsers(users);
+            }
+
+            object? deltaLink;
+
+            if (users.AdditionalData.TryGetValue("@odata.deltaLink", out deltaLink))
+            {
+                DeltaLink = deltaLink;
+            }
+        }
+
+        private void OutputUsers(IUserDeltaCollectionPage users)
+        {
+            foreach (var user in users)
+            {
+                var message = $"User: {user.Id}, {user.GivenName} {user.Surname}";
+                Console.WriteLine(message);
+            }
+        }
+
+        private async Task<IUserDeltaCollectionPage> GetUsers(GraphServiceClient graphClient, object? deltaLink)
+        {
+            IUserDeltaCollectionPage page;
+
+            if (lastPage == null || deltaLink == null)
+            {
+                page = await graphClient.Users
+                                        .Delta()
+                                        .Request()
+                                        .GetAsync();
+            }
+            else
+            {
+                lastPage.InitializeNextPageRequest(graphClient, deltaLink.ToString());
+                page = await lastPage.NextPageRequest.GetAsync();
+            }
+
+            lastPage = page;
+            return page;
         }
 
     }
